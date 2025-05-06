@@ -41,6 +41,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
+        to_save = []
+        to_save_pred = []
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
@@ -63,12 +65,27 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
 
+                to_save.append(np.concatenate((batch_x.detach().cpu().numpy(), batch_y.detach().cpu().numpy()), axis=1))
+
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
+
+                to_save_pred.append(np.concatenate((batch_x.detach().cpu().numpy(), pred), axis=1))
 
                 loss = criterion(pred, true)
 
                 total_loss.append(loss)
+
+        to_save = np.concatenate(to_save, axis=0)
+        ## Saving test dataset to valid.npy
+        np.save('my_artefacts/valid.npy', to_save)
+        print('valid.npy saved with shape:', to_save.shape)
+
+        to_save_pred = np.concatenate(to_save_pred, axis=0)
+        ## Saving test dataset to valid_pred.npy
+        np.save('my_artefacts/valid_pred.npy', to_save_pred)
+        print('valid_pred.npy saved with shape:', to_save_pred.shape)
+
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
@@ -96,6 +113,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
+
+            to_save = []
 
             self.model.train()
             epoch_time = time.time()
@@ -130,6 +149,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
+                to_save.append(np.concatenate((batch_x.detach().cpu().numpy(), batch_y.detach().cpu().numpy()), axis=1))
+
                 if (i + 1) % 100 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
@@ -145,6 +166,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 else:
                     loss.backward()
                     model_optim.step()
+
+            to_save = np.concatenate(to_save, axis=0)
+            ## Saving train dataset to train.npy
+            np.save('my_artefacts/train.npy', to_save)
+            print('train.npy saved with shape:', to_save.shape)
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
@@ -173,6 +199,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds = []
         trues = []
+        to_save = []
+        to_save_pred = []
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -190,6 +218,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 # encoder - decoder
+
+                # ## Print the shape of batch_x and batch_y
+                # print("batch_x shape:", batch_x.shape)
+                # print("batch_x_mark shape:", batch_x_mark.shape)
+                # print("dec_inp shape:", dec_inp.shape)
+                # print("batch_y_mark shape:", batch_y_mark.shape)
+                # print("batch_y shape:", batch_y.shape)
+
+                to_save.append(np.concatenate((batch_x.detach().cpu().numpy(), batch_y.detach().cpu().numpy()), axis=1))
+
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -213,6 +251,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 pred = outputs
                 true = batch_y
+                to_save_pred.append(np.concatenate((batch_x.detach().cpu().numpy(), pred), axis=1))
 
                 preds.append(pred)
                 trues.append(true)
@@ -231,6 +270,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
+
+        to_save = np.concatenate(to_save, axis=0)
+
+        ## Saving test dataset to test.npy
+        np.save('my_artefacts/test.npy', to_save)
+        print('test.npy saved with shape:', to_save.shape)
+
+        to_save_pred = np.concatenate(to_save_pred, axis=0)
+        ## Saving test dataset to test.npy
+        np.save('my_artefacts/test_pred.npy', to_save_pred)
+        print('test_pred.npy saved with shape:', to_save_pred.shape)
 
         # result save
         folder_path = './results/' + setting + '/'
